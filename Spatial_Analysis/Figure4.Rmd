@@ -1,0 +1,182 @@
+---
+title: "MIF Figure 4"
+author: Xiyu Peng
+date: '`r paste("Last Updated on: ",format(Sys.Date(),"%B %d, %Y"))`'
+output:
+    html_document:
+      toc: true
+      toc_float: true 
+      theme: united
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_knit$set(root.dir= normalizePath('..'))
+knitr::opts_chunk$set(error = FALSE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+
+```{r}
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(ggpubr)
+library(ggsci)
+colors = 
+  list("3:Bcell" = "#007CBA",
+       "5:CD8T" = "#FFC20E",
+       "4:CD4T" = "#4C8B2B",
+       "6:Treg" = "#8FC7E8",
+       "2:Macrophage" = "#83276B",
+       "1:tumor/epi" = "red",
+       "7:other" = "grey"
+  )
+new_labels <- c("3:Bcell" = "B cell",
+                "5:CD8T" = "CD8 T cell",
+                "4:CD4T" = "CD4 T cell",
+                "6:Treg" = "Treg",
+                "2:Macrophage" = "Macrophage",
+                "1:tumor/epi" = "Tumor/Epithelial",
+                "7:other" = "Other")
+```
+
+
+```{r}
+# link to clinical data
+clinical_data<-readRDS(file = "~/github/MIF_Analysis/data/df_main_20240126.rds")
+clinical_data_subset<-clinical_data %>% select(tissue_id,match_id,response,response_col,ln_sample)
+  
+# Info of cells closed to B cells  dist2Bcell_all_images.rds contain all immune cells near B cell neighborhoods (<720 pixel)
+feature_table_all_images<-readRDS(file = "~/github/MIF_Analysis/figures/dist2Bcell_all_images.rds")
+```
+
+
+```{r}
+# merge two parts
+data<-merge(clinical_data_subset,feature_table_all_images,by.x = "tissue_id",by.y = "tissueID")
+#table(data$tissue_id)
+#length(table(data$tissue_id))
+```
+
+```{r}
+### parameters
+nbins = 72
+datatype_list =  c("4:CD4T", "5:CD8T","6:Treg")
+```
+
+UPDATE: Exclude sample XXX (PR). The sample ID has been marked due to data sensitivity. Now the analysis include 34 non-LN samples with B cells (13 CR/PR, 21 SD/PD).
+
+* Figure 4A: Stacked histogram showing distribution of immune cell types in B cell neighborhood
+
+```{r,fig.height=4,fig.width=6}
+set.seed(123)
+data$micron<-data$dist2Bcell*0.35
+## random sample 1k cells from each no-LN image
+data_sub<-data %>% filter(ln_sample==0) %>% filter(tissue_id != "XXX") %>%
+  group_by(tissue_id) %>%
+  slice_sample(n = 1000) %>% ungroup()
+ggplot(data_sub, aes(x = micron, fill = majortype)) + 
+    geom_histogram(position = "stack", bins = nbins) +
+     theme_classic() +
+     labs(x = "Distance to the closest B cell (µm)", y = "Cell count")+theme(legend.position = "bottom")+scale_fill_manual(name = "Major cell type",values = colors,labels = new_labels)
+```
+
+* Figure 4B: Immune cell composition in B cell neighborhood 
+
+```{r,fig.height=4,fig.width=6}
+plot_bar<-function(x, celltype, nbins = 72){
+   df<-data.frame(x = x, celltype = celltype)
+   #custom_labels<-c(rep("",19),70,rep("",19),140,rep("",19),210,rep("",12))
+   custom_labels<-c(rep("",13),50,rep("",13),100,rep("",13),150,rep("",13),200,rep("",13),250,"","")
+   df %>% mutate(cut_x = cut(x,nbins)) %>% group_by(cut_x,celltype) %>% 
+     summarise(n = length(cut_x)) %>% ungroup() %>% group_by(cut_x) %>% summarise(celltype,perc = n/sum(n)*100) %>% 
+     ggplot(., aes(x = cut_x, y = perc, fill = celltype, color = celltype)) +
+  geom_bar(stat = "identity", position = "stack")+
+  scale_x_discrete(name = "Distance to the closest B cell (µm)",labels = custom_labels) +
+  ylab("% immune cells") + theme_classic() +
+  scale_fill_manual(name = "Major cell type",values = colors,labels = new_labels) + scale_colour_manual(guide = "none",values = colors)+
+  theme(legend.position = "bottom") # Optional: Adds a minimal theme for a cleaner look
+   #ggbarplot(., x = "cut_x",y = "perc",fill = "celltype",color = "celltype")+ scale_x_discrete(name = "Distance to the closest B cell (µm)", labels = custom_labels)+ylab("% immune cells")+scale_fill_discrete(name = "Major cell type")
+}
+plot_bar(data_sub$micron, data_sub$majortype)
+```
+
+* Figure 4C: Immune cell composition in B cell neighborhood (responders VS non-responders)
+
+```{r}
+set.seed(123)
+### from responders (random sample cells per sample)
+data_res<-data %>% filter(response_col == "Yes",ln_sample==0) %>% filter(tissue_id != "XXX") %>%
+  group_by(tissue_id) %>%
+  slice_sample(n = 1000) %>% ungroup() %>%  
+  slice_sample(n = 10000)
+p1<-ggplot(data_res, aes(x = micron, fill = majortype)) + 
+    geom_histogram(position = "stack", bins = nbins) +
+     theme_classic() +
+     labs(x = "Distance to the closest B cell (µm)", y = "Cell count")+theme(legend.position = "bottom")+scale_fill_manual(name = "Major cell type",values = colors,labels = new_labels)+ylim(0,650)+ggtitle("Responder")
+```
+
+```{r}
+set.seed(123)
+### from non-responders (random sample cells per sample)
+data_nores<-data %>% filter(response_col == "No",ln_sample==0) %>% filter(tissue_id != "XXX") %>%
+  group_by(tissue_id) %>%
+  slice_sample(n = 1000) %>% ungroup() %>%  
+  slice_sample(n = 10000)
+p2<-ggplot(data_nores, aes(x = micron, fill = majortype)) + 
+    geom_histogram(position = "stack", bins = nbins) +
+     theme_classic() +
+     labs(x = "Distance to the closest B cell (µm)", y = "Cell count")+theme(legend.position = "bottom")+scale_fill_manual(name = "Major cell type",values = colors,labels = new_labels)+ylim(0,650)+ggtitle("Non-responder")
+```
+
+```{r,fig.width=12,fig.height=4}
+wrap_plots(p1,p2,guides = "collect") & theme(legend.position = "bottom")
+```
+
+* Figure 4D: Functional marker distribution of T cells in B cell neighborhood
+
+```{r}
+immune_cells<-data_res %>% filter(majortype %in% datatype_list)
+
+immune_cells$Classify_TCF1.7<-as.factor(immune_cells$Classify_TCF1.7)
+p3<-ggplot(immune_cells, aes(x = micron, fill = Classify_TCF1.7)) + 
+  geom_histogram(position = "stack", bins = nbins) +
+   theme_classic() +
+   labs(x = "Distance to the closest B cell (µm)", y = "Cell count")+theme(legend.position = "bottom")+scale_fill_manual(name = "TCF1.7",labels = c("neg","pos"),values = c("#67A9CF","#EF8A62"))+ylim(0,650)
+
+immune_cells$Classify_LAG3<-as.factor(immune_cells$Classify_LAG3)
+p4<-ggplot(immune_cells, aes(x = micron, fill = Classify_LAG3)) + 
+  geom_histogram(position = "stack", bins = nbins) +
+   theme_classic() +
+   labs(x = "Distance to the closest B cell (µm)", y = "Cell count")+theme(legend.position = "bottom")+scale_fill_manual(name = "LAG3",labels = c('neg','pos'),values = c("#67A9CF","#EF8A62"))+ylim(0,650)
+
+immune_cells$Classify_Ki67<-as.factor(immune_cells$Classify_Ki67)
+p5<-ggplot(immune_cells, aes(x = micron, fill = Classify_Ki67)) + 
+  geom_histogram(position = "stack", bins = nbins) +
+   theme_classic() +
+   labs(x = "Distance to the closest B cell (µm)", y = "Cell Count")+theme(legend.position = "bottom")+scale_fill_manual(name = "Ki67",labels=c('neg', 'pos'),values = c("#67A9CF","#EF8A62"))+ylim(0,650)
+```
+
+```{r}  
+p6<- ggplot(immune_cells, aes(x = micron, color = Classify_TCF1.7)) + geom_density()+ 
+ # ggdensity(immune_cells, x = "micron",color = "Classify_TCF1.7")+ 
+  labs(x = "Distance to the closest B cell (µm)", y = "Density")+theme_classic()+scale_color_manual(name = "TCF1.7",labels=c('neg', 'pos'),values = c("#67A9CF","#EF8A62"))+theme(legend.position = "bottom")+ylim(0,0.02)
+p7<- ggplot(immune_cells,aes(x = micron, color = Classify_LAG3)) +geom_density()+
+  #ggdensity(immune_cells, x = "micron",color = "Classify_LAG3")+ 
+  labs(x = "Distance to the closest B cell (µm)", y = "Density")+theme_classic()+scale_color_manual(name = "LAG3",labels=c('neg', 'pos'),values = c("#67A9CF","#EF8A62"))+theme(legend.position = "bottom")+ylim(0,0.02)
+p8<- ggplot(immune_cells,aes(x = micron,color = Classify_Ki67)) + geom_density()+
+  #ggdensity(immune_cells, x = "micron",color = "Classify_Ki67")+ 
+  labs(x = "Distance to the closest B cell (µm)", y = "Density")+theme_classic()+scale_color_manual(name = "Ki67",labels=c('neg', 'pos'),values = c("#67A9CF","#EF8A62"))+theme(legend.position = "bottom")+ylim(0,0.02)
+```
+
+```{r,fig.width=12,fig.height=6}
+wrap_plots(p3,p4,p5,p6,p7,p8, nrow = 2)
+```
+
+Update p-values: TCF1.7(<0.001), LAG3(<0.001), and Ki67(0.069).
+
+Note: The p-values were given by Kolmogorov-Smirnov Test, comparing if the distributions of the two group (positive vs negative) actually come from the same distribution. Here, we report the median of 1000 p-values generated from T cell samples, random sampled from all images to create a balanced datasets.
+
+
