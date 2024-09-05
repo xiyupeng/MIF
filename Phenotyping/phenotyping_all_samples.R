@@ -95,17 +95,17 @@ for(i in 1:length(objectname)){
     ###Check the quality of major cell type with visualization--------------------------------
     marker_list<-c("panCK.SOX10","CD20","CD3","CD8","CD68","FOXP3","Ki67","TCF1.7","LAG3","PD.1","PD.L1","TOX")
     
-    # ## heatmap
-    # DoHeatmap(subset(tissue, downsample = 1000),features = marker_list,slot = "scale.data",disp.max = 1, disp.min = 0)
-    # ggsave(paste0("figures/heatmap/","heatmap_",tissueID[i],".png"),width = 7,height = 7,units = "in")
+    ## heatmap
+    DoHeatmap(subset(tissue, downsample = 1000),features = marker_list,slot = "scale.data",disp.max = 1, disp.min = 0)
+    ggsave(paste0("figures/heatmap/","heatmap_",tissueID[i],".png"),width = 7,height = 7,units = "in")
     # 
-    # ## ridge plot
-    # plist<-list()
-    # for(m in marker_list){
-    #   plist[[m]]<-RidgePlot(object = tissue, features = m,group.by = paste0("Classify_",m),slot = "scale.data")
-    # }
-    # wrap_plots(plist, ncol = 3)
-    # ggsave(paste0("figures/ridge/","ridge_",tissueID[i],".png"),width = 12,height = 12,units = "in")
+    ## ridge plot
+    plist<-list()
+    for(m in marker_list){
+       plist[[m]]<-RidgePlot(object = tissue, features = m,group.by = paste0("Classify_",m),slot = "scale.data")
+    }
+    wrap_plots(plist, ncol = 3)
+    ggsave(paste0("figures/ridge/","ridge_",tissueID[i],".png"),width = 12,height = 12,units = "in")
     # 
     
     ## tissue plot
