@@ -1,0 +1,289 @@
+---
+title: "Melanoma mIF: Figure 4"
+subtitle: "Adapted from Code by Xiyu Peng, PhD"
+editor: source
+date: "Last Updated: `r format(Sys.Date(), format = '%B %d, %Y')`"
+embed-resources: TRUE
+execute: 
+  echo: FALSE
+  message: FALSE
+  warning: FALSE
+format:
+  html:
+    toc: TRUE
+    toc-location: left
+    toc-depth: 3
+    page-layout: full
+---
+
+```{r packages, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+```
+
+```{r import, include=FALSE}
+# Set gtsummary theme
+theme_gtsummary_compact()
+
+# Import data `df_dist`
+```
+
+```{r}
+# Parameters for plots
+nbins = 72
+colors = 
+  list("3:Bcell" = "#007CBA",
+       "5:CD8T" = "#FFC20E",
+       "4:CD4T" = "#4C8B2B",
+       "6:Treg" = "#8FC7E8",
+       "2:Macrophage" = "#83276B",
+       "1:tumor/epi" = "red",
+       "7:other" = "grey"
+  )
+new_labels =
+  list("3:Bcell" = "B cell",
+       "5:CD8T" = "CD8 T cell",
+       "4:CD4T" = "CD3+CD8- T cell",
+       "6:Treg" = "Treg",
+       "2:Macrophage" = "Macrophage",
+       "1:tumor/epi" = "Tumor/Epithelial",
+       "7:other" = "Other")
+```
+
+# Included Samples
+
+These analyses are limited to non-LN samples that have B cells (N = `r df_dist %>% distinct(tissue_id) %>% nrow()`). There are `r df_dist %>% filter(response_col == "Yes") %>% distinct(tissue_id) %>% nrow()` responders and `r df_dist %>% filter(response_col == "No") %>% distinct(tissue_id) %>% nrow()` non-responders.
+
+# Figure 4a
+
+```{r}
+# Randomly sample 1000 cells
+set.seed(123)
+df_dist_sub =
+  df_dist %>% 
+  group_by(tissue_id) %>%
+  slice_sample(n = 1000) %>% 
+  ungroup()
+```
+
+Here, 1000 cells are randomly sampled from each tissue (N = `r df_dist_sub %>% distinct(tissue_id) %>% nrow()` samples, N = `r df_dist_sub %>% nrow()` cells).
+
+Note that some samples have fewer than 1000 cells, in which case all cells are taken.
+
+```{r, fig.height = 4, fig.width = 6}
+# Plotting function
+plot_bar_percentage = function(x, celltype) {
+   
+  df_input = data.frame(x = x, celltype = celltype)
+   
+  df =
+    df_input %>% 
+    mutate(cut_x = cut(x, nbins)) %>% 
+    group_by(cut_x, celltype) %>% 
+    reframe(n = length(cut_x)) %>% 
+    ungroup() %>% 
+    group_by(cut_x) %>% 
+    reframe(celltype, perc = n/sum(n)*100)
+  
+  df_0_label =
+    tibble(
+      cut_x = as.factor("0"),
+      celltype = df %>% ungroup() %>% distinct(celltype) %>% pull(celltype),
+      perc = 0
+    ) 
+  
+  df_plot = 
+    rbind(df, df_0_label) %>% 
+    mutate(cut_x = fct_relevel(cut_x, "0")) %>% 
+    arrange(cut_x)
+
+  x_breaks = df_plot %>% distinct(cut_x) %>% pull(cut_x)
+  x_breaks = x_breaks[c(1, seq(from = 15, by = 14, length.out = 5))]
+  x_labels = as.character(seq(0, 250, 50))
+  
+  df_plot %>% 
+    ggplot(., aes(x = cut_x, y = perc, fill = celltype, color = celltype)) +
+    geom_bar(stat = "identity", position = "stack") +
+    scale_x_discrete(name = "Distance to the closest B cell (µm)", breaks = x_breaks, labels = x_labels) +
+    ylab("% immune cells") +
+    theme_classic() +
+    scale_fill_manual(name = "Major cell type", values = colors, labels = new_labels) +
+    scale_colour_manual(guide = "none", values = colors) +
+    theme(legend.position = "bottom")
+}
+
+# Generate plot
+plot_bar_percentage(df_dist_sub$micron, df_dist_sub$majortype)
+```
+
+# Figure 4c
+
+```{r}
+# Cells from responders
+df_dist_sub_responders = 
+  df_dist_sub %>% 
+  filter(response_col == "Yes")
+
+# Cells from non-responders
+df_dist_sub_nonresponders = 
+  df_dist_sub %>% 
+  filter(response_col == "No")
+```
+
+The same data used for `Figure 4a` is split by response (N = `r df_dist_sub_responders %>% distinct(tissue_id) %>% nrow()` responders with N = `r df_dist_sub_responders %>% nrow()` cells, N = `r df_dist_sub_nonresponders %>% distinct(tissue_id) %>% nrow()` non-responders with N = `r df_dist_sub_nonresponders %>% nrow()` cells).
+
+```{r}
+# Generate plots
+p_responders = plot_bar_percentage(df_dist_sub_responders$micron, df_dist_sub_responders$majortype) + ggtitle("Responders")
+
+p_nonresponders = plot_bar_percentage(df_dist_sub_nonresponders$micron, df_dist_sub_nonresponders$majortype) + ggtitle("Non-responders")
+```
+
+```{r, fig.width = 12, fig.height = 4}
+# Print plots
+wrap_plots(p_responders, p_nonresponders, guides = "collect") & theme(legend.position = "bottom")
+```
+
+# Figure 4d
+
+```{r}
+df_dist_sub_tcell =
+  df_dist_sub %>% 
+  filter(majortype %in% c("5:CD8T", "4:CD4T", "6:Treg"))
+```
+
+1000 cells randomly sampled from each tissue (same as data used for Figure 4a), then filtered to T cells. N = `r df_dist_sub_tcell %>% distinct(tissue_id) %>% nrow()` samples, N = `r df_dist_sub_tcell %>% nrow()` cells (not all samples had T cells sampled).
+
+```{r}  
+p_4d_1 = 
+  df_dist_sub_tcell %>% 
+  ggplot(aes(x = micron, fill = Classify_TCF1.7)) + 
+  geom_histogram(position = "stack", bins = nbins) + 
+  labs(x = "Distance to the closest B cell (µm)", y = "Cell count") + 
+  theme_classic() +
+  scale_fill_manual(
+    name = "TCF1/7",
+    values = c("#67A9CF","#EF8A62")) +
+  theme(legend.position = "bottom") +
+  ylim(0, 1000)
+
+p_4d_2 = 
+  df_dist_sub_tcell %>% 
+  ggplot(aes(x = micron, fill = Classify_LAG3)) +
+  geom_histogram(position = "stack", bins = nbins) +
+  labs(x = "Distance to the closest B cell (µm)", y = "Cell count") +
+  theme_classic() +
+  scale_fill_manual(
+    name = "LAG-3",
+    values = c("#67A9CF","#EF8A62")) +
+  theme(legend.position = "bottom") +
+  ylim(0, 1000)
+
+p_4d_3 =
+  df_dist_sub_tcell %>% 
+  ggplot(aes(x = micron,fill = Classify_Ki67)) + 
+  geom_histogram(position = "stack", bins = nbins) +
+  labs(x = "Distance to the closest B cell (µm)", y = "Cell count") +
+  theme_classic() +
+  scale_fill_manual(
+    name = "Ki67",
+    values = c("#67A9CF","#EF8A62")) +
+  theme(legend.position = "bottom") +
+  ylim(0, 1000)
+```
+
+```{r,fig.width = 12, fig.height = 3}
+wrap_plots(p_4d_1, p_4d_2, p_4d_3, nrow = 1)
+```
+
+# Figure 4e
+
+1000 cells randomly sampled from each tissue (same as data used for Figure 4a), then filtered to T cells. N = `r df_dist_sub_tcell %>% distinct(tissue_id) %>% nrow()` samples, N = `r df_dist_sub_tcell %>% nrow()` cells (not all samples had T cells sampled).
+
+```{r}  
+p_4e_1 = 
+  df_dist_sub_tcell %>% 
+  ggplot(aes(x = micron, color = Classify_TCF1.7)) + 
+  geom_density() + 
+  labs(x = "Distance to the closest B cell (µm)", y = "Density") + 
+  theme_classic() +
+  scale_color_manual(
+    name = "TCF1/7",
+    values = c("#67A9CF","#EF8A62")) +
+  theme(legend.position = "bottom") +
+  ylim(0, 0.02)
+
+p_4e_2 = 
+  df_dist_sub_tcell %>% 
+  ggplot(aes(x = micron, color = Classify_LAG3)) +
+  geom_density() +
+  labs(x = "Distance to the closest B cell (µm)", y = "Density") +
+  theme_classic() +
+  scale_color_manual(
+    name = "LAG-3",
+    values = c("#67A9CF","#EF8A62")) +
+  theme(legend.position = "bottom") +
+  ylim(0, 0.02)
+
+p_4e_3 =
+  df_dist_sub_tcell %>% 
+  ggplot(aes(x = micron,color = Classify_Ki67)) + 
+  geom_density() +
+  labs(x = "Distance to the closest B cell (µm)", y = "Density") +
+  theme_classic() +
+  scale_color_manual(
+    name = "Ki67",
+    values = c("#67A9CF","#EF8A62")) +
+  theme(legend.position = "bottom") +
+  ylim(0, 0.02)
+```
+
+```{r,fig.width = 12, fig.height = 3}
+wrap_plots(p_4e_1, p_4e_2, p_4e_3, nrow = 1)
+```
+
+For each comparison, generate 1000 Kolmogorov-Smirnov p-values by repeatedly randomly sampling 1000 cells. Calculate median p-values and adjust these median p-values using the Bonferroni method.
+
+```{r}
+p_values_tcf17 = c()
+p_values_lag3 = c()
+p_values_ki67 = c()
+
+set.seed(123)
+
+for (i in 1:1000) {
+  
+  df_sample =
+    df_dist_sub_tcell %>% 
+    group_by(tissue_id) %>% 
+    slice_sample(n = 1000) %>% 
+    ungroup()
+  
+  p_values_tcf17 = 
+    c(p_values_tcf17, 
+      ks.test(df_sample$dist2Bcell[df_sample$Classify_TCF1.7 == "Negative"], df_sample$dist2Bcell[df_sample$Classify_TCF1.7 == "Positive"])$p.value)
+  
+  p_values_lag3 = 
+    c(p_values_lag3, 
+      ks.test(df_sample$dist2Bcell[df_sample$Classify_LAG3 == "Negative"], df_sample$dist2Bcell[df_sample$Classify_LAG3 == "Positive"])$p.value)
+  
+  p_values_ki67 = 
+    c(p_values_ki67, 
+      ks.test(df_sample$dist2Bcell[df_sample$Classify_Ki67 == "Negative"], df_sample$dist2Bcell[df_sample$Classify_Ki67 == "Positive"])$p.value)
+
+}
+
+df_ks_results =
+  tibble(
+    marker = c("TCF1/7", "LAG3", "Ki67"),
+    median_p = c(median(p_values_tcf17), median(p_values_lag3), median(p_values_ki67))
+  ) %>% 
+  mutate(
+    median_p_adjusted = p.adjust(median_p, method = "bonferroni"),
+    across(c(median_p, median_p_adjusted), ~ ggsurvfit::format_p(.))
+  )
+
+df_ks_results %>% 
+  knitr::kable()
+```
